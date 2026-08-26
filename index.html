@@ -880,10 +880,17 @@ function renderStats() {
     <div class="stat-card"><div class="n mono">${c.n}</div><div class="l">${c.l}</div></div>
   `).join('');
 
-  // chart: hours by category
+  // chart: hours by category -- solo categorias que SI se miden en horas.
+  // Música / Escuela / Taekwondo son grados y reconocimientos, no cursos por
+  // hora: meterlos en 0h aqui no suma información, solo aplana el grafico.
   const catTotals = {};
   CATS.forEach(c => catTotals[c] = DOCS.filter(d=>d.cat===c).reduce((s,d)=>s+(d.hours||0),0));
-  drawBarChart('chartHours', CATS.map(c => CAT_LABEL[c]), CATS.map(c => catTotals[c]), CATS.map(c => CAT_COLOR[c]), 'h');
+  const hourCats = CATS.filter(c => catTotals[c] > 0);
+  // Escala raiz cuadrada para la ALTURA de la barra (la etiqueta sigue mostrando
+  // la hora real): sin esto, Soldadura (1785h) aplasta a Formación (16h) a un
+  // par de pixeles invisibles. sqrt() comprime la barra dominante y preserva
+  // el orden real sin inventar ni ocultar ningún dato.
+  drawBarChart('chartHours', hourCats.map(c => CAT_LABEL[c]), hourCats.map(c => catTotals[c]), hourCats.map(c => CAT_COLOR[c]), 'h', { scale: 'sqrt' });
 
   // chart: docs by year
   const yearCounts = {};
@@ -896,7 +903,9 @@ function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-function drawBarChart(canvasId, labels, values, colors, unit) {
+function drawBarChart(canvasId, labels, values, colors, unit, opts) {
+  opts = opts || {};
+  const transform = opts.scale === 'sqrt' ? Math.sqrt : (v => v);
   const canvas = document.getElementById(canvasId);
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -912,6 +921,7 @@ function drawBarChart(canvasId, labels, values, colors, unit) {
   const accent = cssVar('--accent') || '#52c7ea';
 
   const max = Math.max(...values, 1);
+  const maxT = transform(max) || 1;
   const padL = 40, padB = 34, padT = 14, padR = 14;
   const chartW = W - padL - padR, chartH = H - padT - padB;
   const barGap = 18;
@@ -923,12 +933,13 @@ function drawBarChart(canvasId, labels, values, colors, unit) {
 
   labels.forEach((label, i) => {
     const v = values[i];
-    const h = (v / max) * chartH;
+    let h = (transform(v) / maxT) * chartH;
+    if (v > 0) h = Math.max(h, 6); // ninguna barra con valor real se colapsa a invisible
     const x = padL + i * (barW + barGap);
     const y = H - padB - h;
     const color = (colors[i] && colors[i].startsWith('#')) ? colors[i] : accent;
     ctx.fillStyle = color;
-    const r = 5;
+    const r = Math.min(5, h / 2);
     ctx.beginPath();
     ctx.moveTo(x, y + h);
     ctx.lineTo(x, y + r);
