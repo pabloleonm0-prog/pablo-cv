@@ -923,7 +923,12 @@ function drawBarChart(canvasId, labels, values, colors, unit, opts) {
   const max = Math.max(...values, 1);
   const maxT = transform(max) || 1;
   const padL = 40, padB = 34, padT = 14, padR = 14;
-  const chartW = W - padL - padR, chartH = H - padT - padB;
+  // labelPad reserva sitio para la etiqueta de la barra mas alta: sin esto,
+  // la barra del valor maximo toca el borde superior del lienzo y su numero
+  // (p.ej. "1785h" o "7") queda pegado o metido dentro del propio rectangulo
+  // en vez de flotar arriba como en las demas barras.
+  const labelPad = 20;
+  const chartW = W - padL - padR, chartH = H - padT - padB - labelPad;
   const barGap = 18;
   const barW = (chartW - barGap * (labels.length - 1)) / labels.length;
 
@@ -953,7 +958,7 @@ function drawBarChart(canvasId, labels, values, colors, unit, opts) {
     ctx.fillStyle = ink;
     ctx.font = '600 12px Cascadia Code, Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(v + unit, x + barW/2, y - 8 < padT ? padT + 10 : y - 8);
+    ctx.fillText(v + unit, x + barW/2, y - 8);
 
     ctx.fillStyle = inkSoft;
     ctx.font = '11px Bahnschrift, sans-serif';
