@@ -164,6 +164,29 @@ h1.big { font-size: clamp(1.7rem, 3.2vw, 2.4rem); margin: 0 0 6px; }
 .dl-item:hover { background: var(--bg); }
 .dl-item-t { font-family: Bahnschrift, sans-serif; font-weight: 600; font-size: .86rem; }
 .dl-item-d { font-size: .74rem; color: var(--ink-soft); }
+
+/* Panel de filtros (cronologia) -- mismo patron visual que el menu de descarga */
+.filter-toggle-btn { background: var(--bg-panel); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+.filter-toggle-btn:hover { box-shadow: var(--shadow); }
+.filter-badge {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px;
+  border-radius: 999px; background: var(--ember); color: #fff; font-size: .68rem; padding: 0 4px;
+}
+.filter-panel { min-width: 260px; max-width: 320px; padding: 10px; }
+.filter-panel-label {
+  font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft);
+  padding: 4px 10px 6px;
+}
+.filter-panel-group { display: flex; flex-direction: column; gap: 1px; }
+.filter-panel-scroll { max-height: 260px; overflow-y: auto; }
+.filter-panel-divider { height: 1px; background: var(--line); margin: 8px 4px; }
+.filter-option {
+  display: block; width: 100%; text-align: left; padding: 8px 10px; border-radius: 7px;
+  border: none; background: transparent; color: var(--ink); font-size: .84rem; cursor: pointer;
+  font-family: Constantia, serif; transition: background .12s ease;
+}
+.filter-option:hover { background: var(--bg); }
+.filter-option.active { background: var(--accent); color: #06202a; font-weight: 600; }
 .sub { color: var(--ink-soft); margin: 0 0 32px; max-width: 62ch; }
 
 /* ---------- CV mode ---------- */
@@ -501,13 +524,32 @@ const CAT_LABEL = { soldadura: 'Soldadura', electronica: 'Electrónica', escuela
 const CAT_COLOR = { soldadura: '#e2703f', electronica: '#52c7ea', escuela: '#8ec97a', deporte: '#e0c05a', musica: '#c58ae0', formacion: '#7fa8d9' };
 
 // ---- mode switching ----
+function switchMode(modeName) {
+  document.querySelectorAll('.switch').forEach(s => s.classList.toggle('active', s.dataset.mode === modeName));
+  document.querySelectorAll('.mode').forEach(m => m.classList.toggle('active', m.id === 'mode-' + modeName));
+}
 document.getElementById('switches').addEventListener('click', (e) => {
   const btn = e.target.closest('.switch');
   if (!btn) return;
-  document.querySelectorAll('.switch').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.mode').forEach(m => m.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('mode-' + btn.dataset.mode).classList.add('active');
+  switchMode(btn.dataset.mode);
+});
+
+// ---- Click en titulo (CV o Cronologia) -> abre ESE documento en la Galeria 3D ----
+// No manda a un PDF de 50 paginas: reusa el mismo visor en alta resolucion que ya
+// tiene zoom y frente/reverso, sin generar ni un archivo nuevo.
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('[data-doc-id]');
+  if (!link) return;
+  e.preventDefault();
+  const docId = link.dataset.docId;
+  switchMode('gallery');
+  document.querySelectorAll('.filter-pill[data-cat]').forEach(p => p.classList.toggle('active', p.dataset.cat === 'all'));
+  renderCards('all');
+  const idx = DOCS.findIndex(d => d.id === docId);
+  if (idx >= 0) {
+    openLightbox(idx, 'front');
+    document.getElementById('cardGrid').children[idx]?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }
 });
 
 // ---- CV mode: fill soldadura / electronica lists + skillbars ----
@@ -515,9 +557,7 @@ function renderCvList(containerId, cat) {
   const el = document.getElementById(containerId);
   const items = DOCS.filter(d => d.cat === cat).sort((a,b) => a.date.localeCompare(b.date));
   el.innerHTML = items.map(d => {
-    const titleHtml = d.pdfPage
-      ? `<a class="t doc-link" href="Pablo%20Leon%20Martinez%20-%20CV%20Completo.pdf#page=${d.pdfPage}" target="_self" title="Ver documento original, página ${d.pdfPage}">${d.title}</a>`
-      : `<span class="t">${d.title}</span>`;
+    const titleHtml = `<a class="t doc-link" href="#" data-doc-id="${d.id}" title="Ver este documento en la galería">${d.title}</a>`;
     return `
     <div class="cv-entry">
       <div class="row">
@@ -669,26 +709,58 @@ let tlDesc = true; // true = mas reciente primero
 
 function renderTlFilters() {
   const el = document.getElementById('tlFilters');
-  const pills = ['<button class="filter-pill active" data-inst="all">Todas las instituciones</button>']
-    .concat(INSTITUCIONES.map(i => `<button class="filter-pill" data-inst="${i}">${i}</button>`));
-  const sortBtn = `<button class="filter-pill sort-toggle" id="tlSortBtn" style="margin-left:auto">
-    <span id="tlSortLabel">Más reciente primero</span> <span id="tlSortIcon">↓</span>
-  </button>`;
-  el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;width:100%;align-items:center">${pills.join('')}${sortBtn}</div>`;
-  el.querySelectorAll('.filter-pill[data-inst]').forEach(btn => {
+  el.innerHTML = `
+    <div class="dl-menu-wrap" id="tlFilterWrap">
+      <button class="download-btn filter-toggle-btn" id="tlFilterToggle" aria-haspopup="true" aria-expanded="false">
+        ⚙ Filtrar y ordenar <span id="tlFilterBadge" class="filter-badge" hidden></span> <span class="caret">▾</span>
+      </button>
+      <div class="dl-menu filter-panel" id="tlFilterPanel">
+        <div class="filter-panel-group">
+          <div class="filter-panel-label">Orden</div>
+          <button class="filter-option active" id="tlSortDesc" data-desc="true">Más reciente primero ↓</button>
+          <button class="filter-option" id="tlSortAsc" data-desc="false">Más antiguo primero ↑</button>
+        </div>
+        <div class="filter-panel-divider"></div>
+        <div class="filter-panel-group filter-panel-scroll">
+          <div class="filter-panel-label">Institución</div>
+          <button class="filter-option active" data-inst="all">Todas (${DOCS.length})</button>
+          ${INSTITUCIONES.map(i => {
+            const n = DOCS.filter(d => d.inst === i).length;
+            return `<button class="filter-option" data-inst="${i}">${i} (${n})</button>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  const wrap = document.getElementById('tlFilterWrap');
+  const toggle = document.getElementById('tlFilterToggle');
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = wrap.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) { wrap.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); }
+  });
+  el.querySelectorAll('.filter-option[data-inst]').forEach(btn => {
     btn.addEventListener('click', () => {
-      el.querySelectorAll('.filter-pill[data-inst]').forEach(p => p.classList.remove('active'));
+      el.querySelectorAll('.filter-option[data-inst]').forEach(p => p.classList.remove('active'));
       btn.classList.add('active');
       tlInst = btn.dataset.inst;
+      const badge = document.getElementById('tlFilterBadge');
+      badge.hidden = tlInst === 'all';
+      badge.textContent = tlInst === 'all' ? '' : '1';
       renderTimeline();
     });
   });
-  document.getElementById('tlSortBtn').addEventListener('click', () => {
-    tlDesc = !tlDesc;
-    document.getElementById('tlSortLabel').textContent = tlDesc ? 'Más reciente primero' : 'Más antiguo primero';
-    document.getElementById('tlSortIcon').textContent = tlDesc ? '↓' : '↑';
+  document.getElementById('tlSortDesc').addEventListener('click', () => setTlSort(true));
+  document.getElementById('tlSortAsc').addEventListener('click', () => setTlSort(false));
+  function setTlSort(desc) {
+    tlDesc = desc;
+    document.getElementById('tlSortDesc').classList.toggle('active', desc);
+    document.getElementById('tlSortAsc').classList.toggle('active', !desc);
     renderTimeline();
-  });
+  }
 }
 
 function renderTimeline() {
@@ -708,7 +780,7 @@ function renderTimeline() {
       <div class="tl-year">${y}</div>
       ${byYear[y].map(d => `
         <div class="tl-card" style="border-left:3px solid ${CAT_COLOR[d.cat]}">
-          <span class="t">${d.title}</span>
+          <a class="t doc-link" href="#" data-doc-id="${d.id}" title="Ver este documento en la galería">${d.title}</a>
           <span class="i">${d.inst}</span>
           <span class="d date">${d.dateLabel}</span>
         </div>
